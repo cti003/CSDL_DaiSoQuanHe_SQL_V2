@@ -1,0 +1,685 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body><title>Đại số quan hệ ↔ SQL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Bố cục: thanh chọn phép toán ở trên; bên trái là ký hiệu + câu SQL, bên phải là bảng vào → bảng kết quả; cuối trang là bảng tra nhanh như slide. */
+:root{
+  --paper:#f5f6fb; --card:#ffffff; --ink:#151845; --ink2:#4b4f78; --muted:#7c80a3;
+  --navy:#1d2275; --navy-ink:#ffffff; --lav:#e7e8f8; --line:#d9dbee;
+  --hl:#f3a83a; --hl-soft:#fff1d9; --hl-ink:#6b4100;
+  --cut:#c44a66; --cut-soft:#fbe8ec;
+  --ok:#1f7a52; --ok-soft:#e3f4ea; --sb:#1b7f93; --sb-soft:#dff3f6;
+  --f-text:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#0f1124; --card:#171a33; --ink:#e8e9f8; --ink2:#b5b8d8; --muted:#8a8eb2;
+  --navy:#9ea4ff; --navy-ink:#0f1124; --lav:#23274d; --line:#2c3055;
+  --hl:#f5b955; --hl-soft:#3a2c12; --hl-ink:#ffd796;
+  --cut:#f08299; --cut-soft:#3a1a22; --ok:#6fd3a2; --ok-soft:#14301f; --sb:#5cc8da; --sb-soft:#12313a; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --paper:#0f1124; --card:#171a33; --ink:#e8e9f8; --ink2:#b5b8d8; --muted:#8a8eb2;
+  --navy:#9ea4ff; --navy-ink:#0f1124; --lav:#23274d; --line:#2c3055;
+  --hl:#f5b955; --hl-soft:#3a2c12; --hl-ink:#ffd796;
+  --cut:#f08299; --cut-soft:#3a1a22; --ok:#6fd3a2; --ok-soft:#14301f; --sb:#5cc8da; --sb-soft:#12313a; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:15px/1.6 var(--f-text);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:20px}
+h1{font-weight:800;font-size:clamp(1.5rem,3.6vw,2.2rem);line-height:1.2;color:var(--navy);margin:0;text-wrap:balance}
+.lede{color:var(--ink2);margin:6px 0 0;max-width:68ch}
+.ops{display:flex;flex-wrap:wrap;gap:8px}
+.op{font:600 .9rem var(--f-text);display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.op .sym{font:600 1.05rem var(--f-mono);color:var(--navy)}
+.op[aria-selected="true"]{background:var(--navy);border-color:var(--navy);color:var(--navy-ink)}
+.op[aria-selected="true"] .sym{color:var(--navy-ink)}
+.op:focus-visible,button:focus-visible,tr:focus-visible{outline:3px solid var(--hl);outline-offset:2px}
+.stage{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+@media (max-width:860px){.stage{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px;min-width:0}
+.eyebrow{font-size:.72rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.opname{font-weight:800;font-size:1.35rem;margin:2px 0 0;color:var(--ink)}
+.formula{font:600 clamp(1.15rem,2.6vw,1.5rem) var(--f-mono);background:var(--lav);color:var(--navy);border-radius:10px;padding:14px 16px;overflow-x:auto;white-space:nowrap}
+.formula sub{font-size:.62em;font-weight:400}
+.reading{margin:0;color:var(--ink2)}
+.sqlbox{position:relative}
+pre.sql{margin:0;font:400 .88rem/1.65 var(--f-mono);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;color:var(--ink)}
+.kw{color:var(--navy);font-weight:600}.str{color:var(--cut)}.cm{color:var(--muted);font-style:italic}
+.copy{position:absolute;top:8px;right:8px;font:600 .75rem var(--f-text);min-height:32px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink2);cursor:pointer}
+.toggle{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toggle button{font:600 .82rem var(--f-mono);min-height:40px;padding:6px 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.toggle button[aria-pressed="true"]{border-color:var(--navy);background:var(--lav);color:var(--navy)}
+.notes{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--ink2);font-size:.92rem}
+.notes b{color:var(--ink)}
+.flow{display:grid;gap:12px}
+.inputs{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.rel{min-width:0;flex:1 1 180px}
+.relhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 6px}
+.relname{font:600 .9rem var(--f-mono);color:var(--navy)}
+.card-count{font:.75rem var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font:400 .84rem var(--f-mono);font-variant-numeric:tabular-nums}
+th{background:var(--navy);color:var(--navy-ink);font-weight:600;text-align:left;padding:7px 10px;white-space:nowrap}
+td{padding:6px 10px;border-top:1px solid var(--line);white-space:nowrap}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--lav) 45%,transparent)}
+td.null{color:var(--muted);font-style:italic}
+th.dim,td.dim{opacity:.35}
+tr.cut td{background:var(--cut-soft)!important;color:var(--cut);text-decoration:line-through;text-decoration-thickness:1px}
+tr.cut td.null{color:var(--cut)}
+tr.keep td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+tr.lit td{background:var(--hl-soft)!important;color:var(--hl-ink)}
+tr.lit td:first-child{box-shadow:inset 4px 0 0 var(--hl)}
+#out tbody tr{cursor:pointer}
+.arrow{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.85rem}
+.arrow::before{content:"";flex:0 0 28px;height:2px;background:var(--line)}
+.arrow .op-chip{font:600 .95rem var(--f-mono);color:var(--navy);background:var(--lav);border-radius:6px;padding:2px 8px}
+.hint{font-size:.82rem;color:var(--muted);margin:0}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.sw.k{background:var(--card);box-shadow:inset 3px 0 0 var(--ok);border:1px solid var(--line)}
+.sw.c{background:var(--cut-soft);border:1px solid var(--cut)}
+.sw.l{background:var(--hl-soft);border:1px solid var(--hl)}
+.ref h2{font-size:1.1rem;margin:0 0 8px;color:var(--navy)}
+.ref table{font-family:var(--f-text);font-size:.86rem}
+.ref td{white-space:normal;vertical-align:top}
+.ref td code{font-family:var(--f-mono);font-size:.82rem}
+.ref tbody tr{cursor:pointer}
+.ref tbody tr.cur td{background:var(--hl-soft)!important}
+.why{background:var(--lav);border-radius:12px;padding:14px 16px;color:var(--ink2);font-size:.92rem}
+.why b{color:var(--navy)}
+.geobig{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px}
+.geobig .gh{display:flex;align-items:center;gap:12px}
+.geobig .gsym{flex:0 0 auto;min-width:52px;height:52px;padding:0 8px;border-radius:12px;background:var(--navy);color:var(--navy-ink);font:600 1.6rem var(--f-mono);display:flex;align-items:center;justify-content:center}
+.geobig h2{margin:0;font-weight:800;font-size:1.3rem;color:var(--ink)}
+.gcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:860px){.gcols{grid-template-columns:minmax(0,1fr)}}
+.gscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.swipe{display:none;font-size:.78rem;color:var(--muted);text-align:center;margin:0}
+@media (max-width:520px){
+  .geobig{padding:12px 10px}
+  .geo{padding:8px 6px}
+  .gscroll svg{min-width:410px}
+  .swipe{display:block}
+}
+.gt{font-size:.88rem;font-weight:600;color:var(--navy);margin:2px 4px 2px}
+.gt b{font-weight:800}
+.glegend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.82rem;color:var(--ink2)}
+.glegend span{display:inline-flex;align-items:center;gap:6px}
+.sw2{width:16px;height:12px;border-radius:3px;display:inline-block;border:1.5px solid}
+.sw2.ra{background:var(--lav);border-color:var(--navy)} .sw2.sb{background:var(--sb-soft);border-color:var(--sb)}
+.sw2.k{background:var(--ok-soft);border-color:var(--ok)} .sw2.x{background:var(--cut-soft);border-color:var(--cut);border-style:dashed}
+.sw2.r{background:var(--hl-soft);border-color:var(--hl)}
+.geo,.geo>*,.panel>*{min-width:0}
+.geo svg{width:100%;height:auto;display:block}
+.geo .cap{font-size:.9rem;color:var(--ink2);margin:0 4px 4px;line-height:1.55}
+.geo .cap b{color:var(--ink)}
+.geo text{font-family:var(--f-mono);font-size:12.5px;fill:var(--ink)}
+.geo text.lab{font-family:var(--f-text);font-size:13px;font-weight:700;fill:var(--navy)}
+.geo text.small{font-size:10.5px;fill:var(--ink2)}
+.geo text.note{font-family:var(--f-text);font-size:12px;font-weight:600;fill:var(--ink2)}
+.geo text.big{font-size:17px;font-weight:600;fill:var(--navy)}
+.geo text.hdt{font-size:11.5px;font-weight:600;fill:var(--navy-ink)}
+.geo text.okt{fill:var(--ok);font-weight:700;font-size:14px}
+.geo text.xt{fill:var(--cut);font-weight:700;font-size:14px}
+.geo .hd{fill:var(--navy)}
+.geo .ra{fill:var(--lav);stroke:var(--navy);stroke-width:1}
+.geo .sb{fill:var(--sb-soft);stroke:var(--sb);stroke-width:1}
+.geo .both{fill:var(--ok-soft);stroke:var(--ok);stroke-width:1.2}
+.geo .br{fill:none;stroke:var(--ink2);stroke-width:1.4}
+.geo .nul{fill:var(--paper);stroke:var(--muted);stroke-width:1;stroke-dasharray:2 2}
+.geo .lone{stroke-width:2.2}
+.geo .ln.nl{stroke:var(--muted);stroke-dasharray:4 3}
+.geo .eq{stroke:var(--ok);stroke-width:1.4;stroke-dasharray:4 3;fill:none}
+.geo .c{fill:var(--card);stroke:var(--line);stroke-width:1}
+.geo .k{fill:var(--ok-soft);stroke:var(--ok);stroke-width:1.2}
+.geo .x{fill:var(--cut-soft);stroke:var(--cut);stroke-width:1;stroke-dasharray:3 2}
+.geo .r{fill:var(--hl-soft);stroke:var(--hl);stroke-width:1.4}
+.geo .band{fill:var(--lav);stroke:none}
+.geo .d{opacity:.32}
+.geo .ln{stroke:var(--ok);stroke-width:1.6;fill:none}
+.geo .ln.x{stroke:var(--cut);stroke-dasharray:3 3;fill:none}
+.geo .ar{stroke:var(--muted);stroke-width:1.6;fill:none;marker-end:url(#ah)}
+.geo .ahead{fill:var(--muted)}
+.geo .venn{fill:none;stroke:var(--navy);stroke-width:1.6}
+.geo .fillr{fill:var(--hl);opacity:.28}
+.geo .strike{stroke:var(--cut);stroke-width:1}
+.geo .lit{stroke:var(--hl)!important;stroke-width:3!important;opacity:1!important}
+.geo .ln.lit{stroke-dasharray:none}
+
+/* ---- bố cục gọn một màn hình ---- */
+body{font-size:14px;line-height:1.5;padding-block:10px 20px}
+.wrap{max-width:1400px;gap:10px}
+.top{display:grid;gap:6px}
+.ops{gap:6px}
+.op{min-height:40px;padding:5px 10px;font-size:.8rem;gap:5px;letter-spacing:-.01em}
+.op .sym{font-size:.95rem}
+.ops{gap:5px}
+.board{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.panel{padding:12px;gap:8px;border-radius:12px}
+.namerow{display:flex;align-items:center;gap:10px}
+.gsym{flex:0 0 auto;min-width:40px;height:40px;padding:0 6px;border-radius:10px;background:var(--navy);color:var(--navy-ink);font:600 1.3rem var(--f-mono);display:flex;align-items:center;justify-content:center}
+.opname{font-size:1.2rem;margin:0}
+.formula{font-size:1.1rem;padding:8px 12px}
+pre.sql{font-size:.8rem;line-height:1.5;padding:10px 12px}
+.toggle button{min-height:36px;padding:4px 10px}
+.notes{font-size:.84rem;gap:4px;padding-left:16px}
+.geo{min-width:0}
+.gt{font-size:.85rem;font-weight:600;color:var(--navy);margin:0}
+.gt .hint{font-weight:400;color:var(--muted);font-size:.78rem}
+.cap{font-size:.85rem;color:var(--ink2);margin:0;line-height:1.5}
+.cap b{color:var(--ink)}
+.glegend{font-size:.76rem;gap:4px 12px}
+.relhead{margin:2px 0 0}
+table{font-size:.8rem}
+th{padding:5px 8px} td{padding:4px 8px}
+.ref summary{cursor:pointer;font-weight:600;color:var(--navy);min-height:28px}
+.ref[open]{gap:10px}
+@media (max-width:1100px){.board{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pA{grid-row:span 2}}
+@media (max-width:720px){
+  .board{grid-template-columns:minmax(0,1fr)}.pA{grid-row:auto}
+  .ops{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
+  .op{flex:0 0 auto}
+}
+@media (max-width:520px){.gscroll svg{min-width:410px}}
+@media (prefers-reduced-motion:no-preference){tr td{transition:background-color .15s,color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">CSDL · Đại số quan hệ ↔ SQL (Buổi 4)</div>
+    <nav class="ops" id="ops" role="tablist" aria-label="Chọn phép toán"></nav>
+  </header>
+
+  <main class="board">
+    <section class="panel pA" aria-label="Ký hiệu và SQL">
+      <div class="namerow"><span class="gsym" id="gsym"></span><h2 class="opname" id="opname"></h2></div>
+      <div class="formula" id="formula" aria-label="Biểu thức đại số quan hệ"></div>
+      <div class="sqlbox"><pre class="sql" id="sql"></pre><button class="copy" id="copy" type="button">Sao chép</button></div>
+      <div class="toggle" id="toggle" hidden></div>
+      <ul class="notes" id="notes"></ul>
+    </section>
+
+    <section class="panel pB" aria-label="Hình khái quát">
+      <div class="gt"><b>①</b> Hình khái quát</div>
+      <div class="gscroll geo" id="shape"></div>
+      <p class="cap" id="shapecap"></p>
+      <div class="glegend"><span><i class="sw2 ra"></i>R</span><span><i class="sw2 sb"></i>S</span><span><i class="sw2 k"></i>giữ lại</span><span><i class="sw2 x"></i>bị loại</span><span><i class="sw2 r"></i>kết quả</span></div>
+    </section>
+
+    <section class="panel pC" aria-label="Ví dụ trên dữ liệu mẫu">
+      <div class="gt"><b>②</b> Trên dữ liệu mẫu <span class="hint">· chạm một dòng kết quả để xem nguồn</span></div>
+      <div class="gscroll geo" id="geo"></div>
+      <p class="cap" id="reading"></p>
+      <div class="relhead"><span class="relname">Kết quả SQL</span><span class="card-count" id="outcount"></span></div>
+      <div class="tbl"><table id="out"></table></div>
+    </section>
+  </main>
+
+  <details class="panel ref">
+    <summary>Bảng tra nhanh 13 phép (9 phép của slide + 4 phép nối mở rộng)</summary>
+    <div class="tbl"><table id="ref"><thead><tr><th>Phép toán đại số quan hệ</th><th>Ký hiệu</th><th>Câu lệnh SQL tương ứng</th></tr></thead><tbody></tbody></table></div>
+  </details>
+</div>
+
+<script>
+"use strict";
+const N = null;
+/* ---------- dữ liệu mẫu (lược đồ QLĐT) ---------- */
+const SINHVIEN = {name:"SINHVIEN", cols:["MaSV","HoTen","MaLop"], rows:[
+  ["SV01","Lê An","K1"],["SV02","Trần Bình","K1"],["SV03","Ngô Chi","K2"],["SV04","Phạm Dũng","K2"],["SV05","Vũ Hà",N]]};
+const LOP = {name:"LOP", cols:["MaLop","TenLop"], rows:[["K1","CNTT 1"],["K2","CNTT 2"],["K3","HTTT 1"]]};
+const DK_CSDL = {name:"DK_CSDL", cols:["MaSV"], rows:[["SV01"],["SV02"],["SV03"]]};
+const DK_CTDL = {name:"DK_CTDL", cols:["MaSV"], rows:[["SV02"],["SV03"],["SV04"]]};
+const SV_THU = {name:"SV_THU", cols:["MaSV"], rows:[["SV01"],["SV02"]]};
+const HOCPHAN = {name:"HOCPHAN", cols:["MaHP"], rows:[["CSDL"],["CTDL"],["MMT"]]};
+const DANGKY = {name:"DANGKY", cols:["MaSV","MaHP"], rows:[["SV01","CSDL"],["SV01","CTDL"],["SV02","CSDL"],["SV03","CSDL"],["SV03","CTDL"],["SV03","MMT"]]};
+const BATBUOC = {name:"BATBUOC", cols:["MaHP"], rows:[["CSDL"],["CTDL"]]};
+
+const eq = (a, b) => a !== null && b !== null && a === b;      // so sánh SQL: NULL không bằng gì
+const key = r => JSON.stringify(r);
+function semi(anti){ const rows=[], k=[], c=[];
+  SINHVIEN.rows.forEach((s,i)=>{ const m = DANGKY.rows.map((d,j)=>[d,j]).filter(([d])=>eq(d[0],s[0]));
+    if(!!m.length !== anti){ rows.push({v:s,src:[["SINHVIEN",i],...m.map(([,j])=>["DANGKY",j])]}); k.push(i); } else c.push(i); });
+  return {inputs:[SINHVIEN,DANGKY], cols:SINHVIEN.cols, rows, keep:{SINHVIEN:k}, cut:{SINHVIEN:c}}; }
+/* mỗi phép trả về: inputs, cols, rows: [{v:[...], src:[[bảng, chỉ số], ...]}], cut: {bảng:[chỉ số]}, keep: {...}, dim: {bảng:[cột]} */
+const OPS = [
+ {id:"chon", sym:"σ", short:"Chọn", name:"Phép chọn", kind:"Phép toán một ngôi · lọc bộ",
+  f:'σ<sub>MaLop = \'K1\'</sub>(SINHVIEN)', ref:"σ điều_kiện (R)", refsql:"SELECT * FROM R WHERE điều_kiện",
+  reading:"Giữ lại những bộ của SINHVIEN thoả điều kiện MaLop = 'K1'. Số cột không đổi, số bộ giảm.",
+  sql:`SELECT *\nFROM SINHVIEN\nWHERE MaLop = 'K1';`,
+  notes:["<b>σ ↔ WHERE</b>: điều kiện chọn đặt ở mệnh đề WHERE.","Bộ SV05 có MaLop là NULL: so sánh NULL = 'K1' cho UNKNOWN nên bộ này bị loại, giống mọi bộ không thoả.","Đừng nhầm σ (chọn dòng) với π (chọn cột): σ ứng với WHERE, π ứng với danh sách sau SELECT."],
+  run(){ const rows=[], keep=[], cut=[]; SINHVIEN.rows.forEach((r,i)=>{ if(eq(r[2],"K1")){rows.push({v:r,src:[["SINHVIEN",i]]});keep.push(i);} else cut.push(i); });
+    return {inputs:[SINHVIEN], cols:SINHVIEN.cols, rows, cut:{SINHVIEN:cut}, keep:{SINHVIEN:keep}}; }},
+ {id:"chieu", sym:"π", short:"Chiếu", name:"Phép chiếu", kind:"Phép toán một ngôi · lấy cột",
+  f:'π<sub>MaLop</sub>(SINHVIEN)', ref:"π A, B (R)", refsql:"SELECT DISTINCT A, B FROM R",
+  reading:"Chỉ lấy cột MaLop của SINHVIEN. Quan hệ là một tập hợp nên các bộ trùng nhau chỉ còn một.",
+  sql:`SELECT DISTINCT MaLop\nFROM SINHVIEN;`, toggle:{label:"Bỏ DISTINCT", a:"Có DISTINCT", b:"Không DISTINCT"},
+  notes:["<b>π ↔ SELECT DISTINCT</b>: đại số quan hệ làm việc trên tập hợp, còn bảng SQL là túi (cho phép trùng). Muốn đúng nghĩa π phải viết DISTINCT.","Bấm <b>Không DISTINCT</b> để thấy SQL trả về 5 dòng, có K1 và K2 lặp lại.","DISTINCT coi các NULL là trùng nhau, nên kết quả có đúng một dòng NULL."],
+  run(alt){ const rows=[], seen=new Map(); SINHVIEN.rows.forEach((r,i)=>{ const v=[r[2]]; const k=key(v);
+      if(alt){ rows.push({v,src:[["SINHVIEN",i]]}); return; }
+      if(seen.has(k)) seen.get(k).src.push(["SINHVIEN",i]); else { const o={v,src:[["SINHVIEN",i]]}; seen.set(k,o); rows.push(o);} });
+    return {inputs:[SINHVIEN], cols:["MaLop"], rows, dim:{SINHVIEN:[0,1]}}; }},
+ {id:"tich", sym:"×", short:"Tích Đề-các", name:"Tích Đề-các", kind:"Phép toán hai ngôi · ghép mọi cặp",
+  f:'SV_THU × HOCPHAN', ref:"R × S", refsql:"SELECT * FROM R CROSS JOIN S",
+  reading:"Ghép mỗi bộ của SV_THU với mọi bộ của HOCPHAN: 2 × 3 = 6 bộ.",
+  sql:`SELECT *\nFROM SV_THU\n  CROSS JOIN HOCPHAN;`,
+  notes:["<b>× ↔ CROSS JOIN</b>, hoặc viết hai bảng cách nhau dấu phẩy trong FROM mà không có điều kiện nối.","Số bộ kết quả = |R| × |S|. Quên điều kiện nối khi JOIN chính là vô tình tạo tích Đề-các: số dòng nhân lên."],
+  run(){ const rows=[]; SV_THU.rows.forEach((a,i)=>HOCPHAN.rows.forEach((b,j)=>rows.push({v:[...a,...b],src:[["SV_THU",i],["HOCPHAN",j]]})));
+    return {inputs:[SV_THU,HOCPHAN], cols:["MaSV","MaHP"], rows}; }},
+ {id:"noi-dk", sym:"⋈θ", short:"Nối θ (INNER)", name:"Kết nối theo điều kiện (INNER JOIN)", kind:"Phép toán hai ngôi · tích rồi chọn",
+  f:'SINHVIEN ⋈<sub>SINHVIEN.MaLop = LOP.MaLop</sub> LOP', ref:"R ⋈ điều_kiện S (nối bằng: R ⋈ A = B S)", refsql:"SELECT * FROM R [INNER] JOIN S ON điều_kiện",
+  reading:"INNER JOIN chỉ giữ các cặp khớp nhau: bằng tích SINHVIEN × LOP rồi chọn các cặp có MaLop bằng nhau. Kết quả giữ cả hai cột MaLop.",
+  sql:`SELECT *\nFROM SINHVIEN s\n  INNER JOIN LOP l\n    ON s.MaLop = l.MaLop;`,
+  notes:["<b>⋈<sub>θ</sub> ↔ INNER JOIN … ON θ</b> (nối trong). Chữ INNER có thể bỏ: viết JOIN là hiểu INNER JOIN. Tương đương σ<sub>θ</sub>(R × S). Khi θ chỉ gồm phép so sánh bằng (như ở đây) thì gọi là <b>nối bằng</b> (equi-join).","SV05 (MaLop NULL) và lớp K3 (chưa có sinh viên) không khớp nên không có trong kết quả. Muốn giữ chúng phải dùng phép nối ngoài (nút ⟗ Nối ngoài).","Cả hai cột MaLop đều xuất hiện; khi SELECT nên ghi rõ s.MaLop hay l.MaLop."],
+  run(){ const rows=[], kS=new Set(), kL=new Set(); SINHVIEN.rows.forEach((a,i)=>LOP.rows.forEach((b,j)=>{ if(eq(a[2],b[0])){rows.push({v:[...a,...b],src:[["SINHVIEN",i],["LOP",j]]});kS.add(i);kL.add(j);} }));
+    return {inputs:[SINHVIEN,LOP], cols:["MaSV","HoTen","s.MaLop","l.MaLop","TenLop"], rows,
+      keep:{SINHVIEN:[...kS],LOP:[...kL]}, cut:{SINHVIEN:SINHVIEN.rows.map((_,i)=>i).filter(i=>!kS.has(i)),LOP:LOP.rows.map((_,i)=>i).filter(i=>!kL.has(i))}}; }},
+ {id:"noi-tn", sym:"*", short:"Nối tự nhiên", name:"Kết nối tự nhiên", kind:"Phép toán hai ngôi · nối theo cột cùng tên",
+  f:'SINHVIEN * LOP &nbsp;<span style="font-weight:400;font-size:.8em">(còn viết SINHVIEN ⋈ LOP)</span>', ref:"R * S", refsql:"SELECT * FROM R NATURAL JOIN S",
+  reading:"Tự nối theo mọi cột trùng tên (ở đây là MaLop) và chỉ giữ một cột MaLop trong kết quả.",
+  sql:`SELECT *\nFROM SINHVIEN\n  NATURAL JOIN LOP;`,
+  notes:["<b>* ↔ NATURAL JOIN</b>: một dạng INNER JOIN, hệ quản trị tự tìm các cột cùng tên để so sánh bằng. Viết rõ hơn: INNER JOIN LOP USING (MaLop).","Khác ⋈<sub>θ</sub>: cột chung chỉ còn một lần (4 cột thay vì 5).","Cẩn thận khi dùng thật: nếu hai bảng tình cờ có thêm cột cùng tên (ví dụ cùng có cột Ten), NATURAL JOIN sẽ so sánh cả cột đó. Trong bài làm nên viết JOIN … ON hoặc JOIN … USING (MaLop)."],
+  run(){ const rows=[], kS=new Set(), kL=new Set(); SINHVIEN.rows.forEach((a,i)=>LOP.rows.forEach((b,j)=>{ if(eq(a[2],b[0])){rows.push({v:[a[2],a[0],a[1],b[1]],src:[["SINHVIEN",i],["LOP",j]]});kS.add(i);kL.add(j);} }));
+    return {inputs:[SINHVIEN,LOP], cols:["MaLop","MaSV","HoTen","TenLop"], rows,
+      keep:{SINHVIEN:[...kS],LOP:[...kL]}, cut:{SINHVIEN:SINHVIEN.rows.map((_,i)=>i).filter(i=>!kS.has(i)),LOP:LOP.rows.map((_,i)=>i).filter(i=>!kL.has(i))}}; }},
+ {id:"noi-ngoai", sym:"⟗", short:"Nối ngoài (OUTER)", name:"Kết nối ngoài (OUTER JOIN)",
+  f:a => `SINHVIEN ${["⟕","⟖","⟗"][a]}<sub>SINHVIEN.MaLop = LOP.MaLop</sub> LOP`, ref:"R ⟕ S · R ⟖ S · R ⟗ S", refsql:"SELECT * FROM R LEFT | RIGHT | FULL [OUTER] JOIN S ON điều_kiện",
+  reading:a => ["LEFT OUTER JOIN giữ mọi sinh viên (vế trái): 4 cặp khớp, cộng SV05 (chưa có lớp) với các cột của LOP là NULL.",
+                "RIGHT OUTER JOIN giữ mọi lớp (vế phải): 4 cặp khớp, cộng lớp K3 (chưa có sinh viên) với các cột của SINHVIEN là NULL.",
+                "FULL OUTER JOIN giữ cả hai vế: 4 cặp khớp, cộng SV05 và K3, phần thiếu điền NULL."][a],
+  sql:a => `SELECT *\nFROM SINHVIEN s\n  ${["LEFT","RIGHT","FULL"][a]} OUTER JOIN LOP l\n    ON s.MaLop = l.MaLop;`,
+  toggle:{opts:["⟕ LEFT","⟖ RIGHT","⟗ FULL"]},
+  notes:["<b>⟕ ↔ LEFT OUTER JOIN, ⟖ ↔ RIGHT OUTER JOIN, ⟗ ↔ FULL OUTER JOIN</b>. Chữ OUTER có thể bỏ (LEFT JOIN = LEFT OUTER JOIN). Kết quả = phép nối trong ⋈<sub>θ</sub> cộng các bộ không có cặp của vế được giữ, phần thiếu điền NULL.",
+         "Mẹo tìm «cái không có»: LEFT JOIN … WHERE l.MaLop IS NULL cho sinh viên chưa có lớp. Ngược lại, đặt điều kiện lọc cột của LOP ở WHERE sẽ biến LEFT JOIN thành nối trong."],
+  run(a){ const rows=[], kS=new Set(), kL=new Set(), N3=[null,null,null], N2=[null,null];
+    SINHVIEN.rows.forEach((s,i)=>LOP.rows.forEach((l,j)=>{ if(eq(s[2],l[0])){ rows.push({v:[...s,...l],src:[["SINHVIEN",i],["LOP",j]]}); kS.add(i); kL.add(j);} }));
+    const lS = SINHVIEN.rows.map((_,i)=>i).filter(i=>!kS.has(i)), lL = LOP.rows.map((_,j)=>j).filter(j=>!kL.has(j));
+    if(a !== 1) lS.forEach(i => { rows.push({v:[...SINHVIEN.rows[i],...N2],src:[["SINHVIEN",i]],pad:"L"}); kS.add(i); });
+    if(a !== 0) lL.forEach(j => { rows.push({v:[...N3,...LOP.rows[j]],src:[["LOP",j]],pad:"S"}); kL.add(j); });
+    return {inputs:[SINHVIEN,LOP], cols:["MaSV","HoTen","s.MaLop","l.MaLop","TenLop"], rows,
+      keep:{SINHVIEN:[...kS],LOP:[...kL]}, cut:{SINHVIEN:SINHVIEN.rows.map((_,i)=>i).filter(i=>!kS.has(i)),LOP:LOP.rows.map((_,j)=>j).filter(j=>!kL.has(j))}}; }},
+ {id:"nua-noi", sym:"⋉", short:"Nửa nối", name:"Nửa nối (semi-join)",
+  f:'SINHVIEN ⋉ DANGKY', ref:"R ⋉ S", refsql:"SELECT * FROM R WHERE EXISTS (SELECT * FROM S WHERE điều_kiện)",
+  reading:"Sinh viên có ít nhất một đăng ký học phần. Chỉ lấy cột của SINHVIEN và mỗi sinh viên một lần, dù SV03 đăng ký 3 học phần.",
+  sql:`SELECT *\nFROM SINHVIEN s\nWHERE EXISTS (\n  SELECT *\n  FROM DANGKY d\n  WHERE d.MaSV = s.MaSV\n);`,
+  notes:["<b>⋉ ↔ WHERE EXISTS</b> (hoặc MaSV IN (SELECT MaSV FROM DANGKY)). Định nghĩa: R ⋉ S = π<sub>cột của R</sub>(R * S).",
+         "Viết bằng JOIN sẽ ra 6 dòng (SV01 hai lần, SV03 ba lần) và phải thêm DISTINCT; nửa nối không nhân bản dòng."],
+  run(){ return semi(false); }},
+ {id:"phan-noi", sym:"▷", short:"Phản nối", name:"Phản nối (anti-join)",
+  f:'SINHVIEN ▷ DANGKY', ref:"R ▷ S", refsql:"SELECT * FROM R WHERE NOT EXISTS (SELECT * FROM S WHERE điều_kiện)",
+  reading:"Sinh viên chưa đăng ký học phần nào: SV04 và SV05. Đây là phần còn lại của SINHVIEN sau nửa nối.",
+  sql:`SELECT *\nFROM SINHVIEN s\nWHERE NOT EXISTS (\n  SELECT *\n  FROM DANGKY d\n  WHERE d.MaSV = s.MaSV\n);`,
+  notes:["<b>▷ ↔ WHERE NOT EXISTS</b>, hoặc LEFT JOIN … WHERE d.MaSV IS NULL. Định nghĩa: R ▷ S = R − (R ⋉ S).",
+         "Tránh NOT IN (SELECT MaSV FROM DANGKY) khi cột bên trong có thể NULL: chỉ một giá trị NULL cũng làm kết quả rỗng."],
+  run(){ return semi(true); }},
+ {id:"tu-noi", sym:"ρ", short:"Tự nối (SELF)", name:"Tự nối (SELF JOIN)",
+  f:'ρ<sub>s1</sub>(SINHVIEN) ⋈<sub>s1.MaLop = s2.MaLop ∧ s1.MaSV &lt; s2.MaSV</sub> ρ<sub>s2</sub>(SINHVIEN)', ref:"ρ S1(R) ⋈ điều_kiện ρ S2(R)", refsql:"SELECT … FROM R s1 [INNER] JOIN R s2 ON điều_kiện (SELF JOIN)",
+  reading:"SELF JOIN: các cặp sinh viên học cùng lớp. Phép đổi tên ρ tạo hai bản sao s1, s2 của cùng bảng SINHVIEN rồi nối chúng với nhau.",
+  sql:`SELECT s1.MaSV, s2.MaSV, s1.MaLop\nFROM SINHVIEN s1\n  INNER JOIN SINHVIEN s2\n    ON s1.MaLop = s2.MaLop\n   AND s1.MaSV < s2.MaSV;`,
+  notes:["<b>SELF JOIN không phải một từ khoá SQL</b>: đó là INNER (hoặc OUTER) JOIN một bảng với chính nó. <b>ρ ↔ bí danh</b> s1, s2 (FROM SINHVIEN s1 … SINHVIEN s2); không đặt bí danh thì không phân biệt được hai lần xuất hiện của cùng một cột.",
+         "Bỏ điều kiện s1.MaSV &lt; s2.MaSV sẽ ra 8 cặp: 4 cặp tự ghép (SV01, SV01)… và mỗi cặp thật xuất hiện hai lần theo hai chiều."],
+  run(){ const rows=[], k=new Set(); SINHVIEN.rows.forEach((a,i)=>SINHVIEN.rows.forEach((b,j)=>{ if(eq(a[2],b[2]) && a[0] < b[0]){ rows.push({v:[a[0],b[0],a[2]],src:[["S1",i],["S2",j]]}); k.add(i); k.add(j);} }));
+    return {inputs:[SINHVIEN], cols:["s1.MaSV","s2.MaSV","MaLop"], rows, keep:{SINHVIEN:[...k]}}; }},
+ {id:"hop", sym:"∪", short:"Hợp", name:"Phép hợp", kind:"Phép toán tập hợp · hai quan hệ khả hợp",
+  f:'DK_CSDL ∪ DK_CTDL', ref:"R ∪ S", refsql:"SELECT … FROM R UNION SELECT … FROM S",
+  reading:"Sinh viên đăng ký CSDL hoặc CTDL (hoặc cả hai). Bộ có ở cả hai quan hệ chỉ xuất hiện một lần.",
+  sql:`SELECT MaSV FROM DK_CSDL\nUNION\nSELECT MaSV FROM DK_CTDL;`, toggle:{label:"UNION ALL", a:"UNION", b:"UNION ALL"},
+  notes:["<b>∪ ↔ UNION</b>. Hai vế phải <b>khả hợp</b>: cùng số cột, kiểu tương ứng giống nhau.","UNION bỏ bộ trùng như phép hợp tập hợp. Bấm <b>UNION ALL</b> để thấy SV02, SV03 xuất hiện hai lần (6 dòng)."],
+  run(alt){ const rows=[], seen=new Map(); [[DK_CSDL,"DK_CSDL"],[DK_CTDL,"DK_CTDL"]].forEach(([R,n])=>R.rows.forEach((r,i)=>{ const k=key(r);
+      if(!alt && seen.has(k)) seen.get(k).src.push([n,i]); else { const o={v:r,src:[[n,i]]}; seen.set(k,o); rows.push(o);} }));
+    return {inputs:[DK_CSDL,DK_CTDL], cols:["MaSV"], rows}; }},
+ {id:"giao", sym:"∩", short:"Giao", name:"Phép giao", kind:"Phép toán tập hợp · hai quan hệ khả hợp",
+  f:'DK_CSDL ∩ DK_CTDL', ref:"R ∩ S", refsql:"SELECT … FROM R INTERSECT SELECT … FROM S",
+  reading:"Sinh viên đăng ký cả CSDL lẫn CTDL: bộ phải có mặt trong cả hai quan hệ.",
+  sql:`SELECT MaSV FROM DK_CSDL\nINTERSECT\nSELECT MaSV FROM DK_CTDL;`,
+  notes:["<b>∩ ↔ INTERSECT</b>; hai vế phải khả hợp.","Cũng viết được bằng JOIN hoặc EXISTS: R ∩ S = R − (R − S)."],
+  run(){ const rows=[], kR=[], kS=[]; DK_CSDL.rows.forEach((r,i)=>{ const j=DK_CTDL.rows.findIndex(s=>key(s)===key(r)); if(j>=0){rows.push({v:r,src:[["DK_CSDL",i],["DK_CTDL",j]]});kR.push(i);kS.push(j);} });
+    return {inputs:[DK_CSDL,DK_CTDL], cols:["MaSV"], rows, keep:{DK_CSDL:kR,DK_CTDL:kS},
+      cut:{DK_CSDL:DK_CSDL.rows.map((_,i)=>i).filter(i=>!kR.includes(i)),DK_CTDL:DK_CTDL.rows.map((_,i)=>i).filter(i=>!kS.includes(i))}}; }},
+ {id:"tru", sym:"−", short:"Trừ", name:"Phép trừ", kind:"Phép toán tập hợp · hai quan hệ khả hợp",
+  f:'DK_CSDL − DK_CTDL', ref:"R − S", refsql:"SELECT … FROM R EXCEPT SELECT … FROM S",
+  reading:"Sinh viên đăng ký CSDL nhưng không đăng ký CTDL. Phép trừ không giao hoán: DK_CTDL − DK_CSDL cho SV04.",
+  sql:`SELECT MaSV FROM DK_CSDL\nEXCEPT\nSELECT MaSV FROM DK_CTDL;`,
+  notes:["<b>− ↔ EXCEPT</b> (Oracle gọi là MINUS); hai vế phải khả hợp.","Đây là mẫu «tìm phần thiếu». Cách viết tương đương: NOT EXISTS, hoặc LEFT JOIN … WHERE cột_bên_phải IS NULL. Tránh NOT IN khi cột bên phải có thể NULL."],
+  run(){ const rows=[], kR=[], cR=[]; DK_CSDL.rows.forEach((r,i)=>{ const j=DK_CTDL.rows.findIndex(s=>key(s)===key(r)); if(j<0){rows.push({v:r,src:[["DK_CSDL",i]]});kR.push(i);} else cR.push(i); });
+    return {inputs:[DK_CSDL,DK_CTDL], cols:["MaSV"], rows, keep:{DK_CSDL:kR}, cut:{DK_CSDL:cR}}; }},
+ {id:"chia", sym:"÷", short:"Chia", name:"Phép chia", kind:"Phép toán «đủ mọi»",
+  f:'DANGKY ÷ BATBUOC', ref:"R ÷ S", refsql:"Không có cú pháp riêng — dùng NOT EXISTS lồng hai lần",
+  reading:"Sinh viên đã đăng ký đủ mọi học phần trong BATBUOC. SV02 thiếu CTDL nên bị loại; SV03 học thêm MMT vẫn được tính.",
+  sql:`SELECT DISTINCT d.MaSV\nFROM DANGKY d\nWHERE NOT EXISTS (   -- không có HP bắt buộc nào\n  SELECT *\n  FROM BATBUOC b\n  WHERE NOT EXISTS ( -- mà SV chưa đăng ký\n    SELECT *\n    FROM DANGKY d2\n    WHERE d2.MaSV = d.MaSV\n      AND d2.MaHP = b.MaHP\n  )\n);`,
+  notes:["SQL không có toán tử chia. Đọc hai tầng NOT EXISTS là: «không tồn tại học phần bắt buộc nào mà sinh viên chưa đăng ký».","Cách viết khác bằng đếm: GROUP BY MaSV HAVING COUNT(DISTINCT MaHP) = (SELECT COUNT(*) FROM BATBUOC), với điều kiện chỉ đếm các học phần có trong BATBUOC.","Dấu hiệu nhận ra phép chia trong đề: các cụm «tất cả», «mọi», «đủ các»."],
+  run(){ const need=BATBUOC.rows.map(r=>r[0]); const rows=[], kd=new Set(), cd=new Set(); const svs=[...new Set(DANGKY.rows.map(r=>r[0]))];
+    svs.forEach(sv=>{ const mine=DANGKY.rows.map((r,i)=>[r,i]).filter(([r])=>r[0]===sv); const ok=need.every(h=>mine.some(([r])=>r[1]===h));
+      if(ok){ const src=mine.filter(([r])=>need.includes(r[1])).map(([,i])=>["DANGKY",i]).concat(BATBUOC.rows.map((_,j)=>["BATBUOC",j])); rows.push({v:[sv],src}); mine.forEach(([,i])=>kd.add(i)); }
+      else mine.forEach(([,i])=>cd.add(i)); });
+    return {inputs:[DANGKY,BATBUOC], cols:["MaSV"], rows, keep:{DANGKY:[...kd]}, cut:{DANGKY:[...cd]}}; }}
+];
+
+/* ---------- hình học minh hoạ (SVG vẽ từ chính dữ liệu) ---------- */
+const S = (n, i) => `${n}:${i}`;
+const R_ = (x, y, w, h, cls, src, rx = 4) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" class="${cls}"${src ? ` data-src="${src}"` : ""}/>`;
+const T_ = (x, y, s, cls = "", anchor = "start") => `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${esc(s)}</text>`;
+const L_ = (x1, y1, x2, y2, cls, pair) => `<path d="M${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}" class="${cls}"${pair ? ` data-pair="${pair}"` : ""}/>`;
+const AR = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="ar"/>`;
+const DEFS = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahead"/></marker></defs>`;
+const svg = (h, body) => `<svg viewBox="0 0 440 ${h}" role="img" xmlns="http://www.w3.org/2000/svg">${DEFS}${body}</svg>`;
+const sv = v => v === null ? "NULL" : v;
+function geo(op, res, alt){
+  const keep = n => new Set((res.keep || {})[n] || []);
+  if(op.id === "chon"){
+    const k = keep("SINHVIEN"); let b = T_(14, 16, "SINHVIEN (5 bộ)", "lab") + T_(300, 16, "Kết quả (2 bộ)", "lab");
+    SINHVIEN.rows.forEach((r, i) => { const y = 26 + i * 30, on = k.has(i);
+      b += R_(14, y, 200, 24, on ? "k" : "x", S("SINHVIEN", i)) + T_(24, y + 16, `${r[0]}  ${r[1]}`) + T_(196, y + 16, sv(r[2]), "", "end");
+      if(!on) b += `<line x1="18" y1="${y + 12}" x2="210" y2="${y + 12}" class="strike"/>`; });
+    b += AR(222, 100, 288, 100) + T_(255, 92, "σ", "lab", "middle");
+    res.rows.forEach((r, o) => { const y = 70 + o * 30; b += R_(296, y, 130, 24, "r", S("SINHVIEN", r.src[0][1])) + T_(306, y + 16, `${r.v[0]} · ${r.v[2]}`); });
+    return [svg(180, b), "σ cắt bảng theo chiều ngang: giữ nguyên mọi cột, chỉ những dòng thoả MaLop = 'K1' đi qua. Dòng MaLop NULL cũng bị chặn."];
+  }
+  if(op.id === "chieu"){
+    let b = T_(14, 16, "SINHVIEN", "lab") + T_(330, 16, alt ? "Kết quả (5 dòng)" : "Kết quả (3 bộ)", "lab");
+    const cw = [62, 86, 56], cx = [14, 76, 162];
+    b += R_(162, 24, 56, 156, "band", null, 6);
+    ["MaSV", "HoTen", "MaLop"].forEach((c, k) => b += T_(cx[k] + cw[k] / 2, 38, c, k === 2 ? "lab" : "small", "middle"));
+    SINHVIEN.rows.forEach((r, i) => { const y = 46 + i * 26;
+      r.forEach((v, k) => { b += R_(cx[k] + 2, y, cw[k] - 4, 22, k === 2 ? "k" : "c d", k === 2 ? S("SINHVIEN", i) : null, 3) + T_(cx[k] + cw[k] / 2, y + 15, k === 1 ? String(v).split(" ").pop() : sv(v), k === 2 ? "" : "small", "middle"); }); });
+    res.rows.forEach((r, o) => { const y = 46 + o * (alt ? 26 : 40) + (alt ? 0 : 14);
+      b += R_(330, y, 70, 22, "r", null, 3) + T_(365, y + 15, sv(r.v[0]), "", "middle");
+      r.src.forEach(([, i]) => b += L_(218, 57 + i * 26, 330, y + 11, "ln", `SINHVIEN:${i}|OUT:${o}`)); });
+    return [svg(190, b), alt ? "Không có DISTINCT: mỗi dòng nguồn cho một dòng kết quả, K1 và K2 lặp lại (túi)." : "π cắt bảng theo chiều dọc: chỉ giữ cột MaLop; các ô trùng giá trị dồn về một bộ (tập hợp). NULL được giữ như một giá trị."];
+  }
+  if(op.id === "tich"){
+    let b = T_(14, 16, "SV_THU × HOCPHAN = 2 × 3 = 6 ô", "lab");
+    HOCPHAN.rows.forEach((h, j) => b += R_(120 + j * 104, 28, 96, 24, "c", S("HOCPHAN", j)) + T_(168 + j * 104, 44, h[0], "", "middle"));
+    SV_THU.rows.forEach((s, i) => { b += R_(14, 62 + i * 46, 90, 38, "c", S("SV_THU", i)) + T_(59, 85 + i * 46, s[0], "", "middle");
+      HOCPHAN.rows.forEach((h, j) => b += R_(120 + j * 104, 62 + i * 46, 96, 38, "r", S("OUT", i * 3 + j)) + T_(168 + j * 104, 85 + i * 46, `${s[0]}·${h[0]}`, "small", "middle")); });
+    return [svg(162, b), "Tích Đề-các là một lưới: mỗi bộ bên trái ghép với mọi bộ bên trên. Số ô = số dòng × số cột của lưới."];
+  }
+  if(op.id === "noi-dk" || op.id === "noi-tn"){
+    const nat = op.id === "noi-tn"; let b = T_(14, 16, "SINHVIEN", "lab") + T_(426, 16, "LOP", "lab", "end");
+    const kS = keep("SINHVIEN"), kL = keep("LOP"), ys = i => 26 + i * 30, yl = j => 41 + j * 40;
+    SINHVIEN.rows.forEach((r, i) => b += R_(14, ys(i), 138, 24, kS.has(i) ? "k" : "x", S("SINHVIEN", i)) + T_(22, ys(i) + 16, r[0]) + T_(144, ys(i) + 16, sv(r[2]), "", "end"));
+    LOP.rows.forEach((r, j) => b += R_(318, yl(j), 108, 24, kL.has(j) ? "k" : "x", S("LOP", j)) + T_(326, yl(j) + 16, r[0]) + T_(418, yl(j) + 16, r[1].replace("CNTT ", "CNTT"), "small", "end"));
+    if(nat){
+      const keys = [...new Set(res.rows.map(r => r.v[0]))], ym = k => 56 + keys.indexOf(k) * 54;
+      keys.forEach(k => b += `<circle cx="235" cy="${ym(k) + 12}" r="17" class="r"/>` + T_(235, ym(k) + 16, k, "", "middle"));
+      b += T_(235, 172, "cột chung MaLop", "small", "middle");
+      res.rows.forEach((r, o) => { const [[, i], [, j]] = r.src; b += L_(152, ys(i) + 12, 218, ym(r.v[0]) + 12, "ln", `SINHVIEN:${i}|OUT:${o}`) + L_(252, ym(r.v[0]) + 12, 318, yl(j) + 12, "ln", `LOP:${j}|OUT:${o}`); });
+    } else {
+      res.rows.forEach((r, o) => { const [[, i], [, j]] = r.src; b += L_(152, ys(i) + 12, 318, yl(j) + 12, "ln", `SINHVIEN:${i}|LOP:${j}`); });
+      b += T_(235, 172, "s.MaLop = l.MaLop", "small", "middle");
+    }
+    return [svg(182, b), nat ? "Kết nối tự nhiên: hai bảng gặp nhau qua cột cùng tên MaLop; mỗi giá trị chung chỉ còn một cột trong kết quả." : "Kết nối theo điều kiện: mỗi đường là một cặp bộ thoả s.MaLop = l.MaLop (4 cặp). SV05 (NULL) và K3 không có đường nào nên rơi khỏi kết quả."];
+  }
+  if(op.id === "noi-ngoai"){
+    let b = T_(14, 16, "SINHVIEN", "lab") + T_(426, 16, "LOP", "lab", "end");
+    const kS = keep("SINHVIEN"), kL = keep("LOP"), ys = i => 26 + i * 30, yl = j => 41 + j * 40;
+    SINHVIEN.rows.forEach((r, i) => b += R_(14, ys(i), 138, 24, kS.has(i) ? "k" : "x", S("SINHVIEN", i)) + T_(22, ys(i) + 16, r[0]) + T_(144, ys(i) + 16, sv(r[2]), "", "end"));
+    LOP.rows.forEach((r, j) => b += R_(318, yl(j), 108, 24, kL.has(j) ? "k" : "x", S("LOP", j)) + T_(326, yl(j) + 16, r[0]) + T_(418, yl(j) + 16, r[1].replace("CNTT ", "CNTT"), "small", "end"));
+    res.rows.forEach((r, o) => {
+      if(r.pad === "L"){ const i = r.src[0][1]; b += R_(318, 170, 108, 24, "nul", S("OUT", o)) + T_(372, 186, "NULL, NULL", "small", "middle") + L_(152, ys(i) + 12, 318, 182, "ln nl", `SINHVIEN:${i}|OUT:${o}`); }
+      else if(r.pad === "S"){ const j = r.src[0][1]; b += R_(14, 176, 138, 24, "nul", S("OUT", o)) + T_(83, 192, "NULL, NULL, NULL", "small", "middle") + L_(152, 188, 318, yl(j) + 12, "ln nl", `LOP:${j}|OUT:${o}`); }
+      else { const [[, i], [, j]] = r.src; b += L_(152, ys(i) + 12, 318, yl(j) + 12, "ln", `SINHVIEN:${i}|LOP:${j}`); }
+    });
+    return [svg(206, b), ""];
+  }
+  if(op.id === "nua-noi" || op.id === "phan-noi"){
+    const anti = op.id === "phan-noi", outSet = new Set(res.rows.map(r => r.v[0]));
+    let b = T_(14, 16, "SINHVIEN", "lab") + T_(426, 16, "DANGKY", "lab", "end");
+    const ys = i => 26 + i * 32, yd = j => 26 + j * 27;
+    SINHVIEN.rows.forEach((r, i) => { const on = outSet.has(r[0]);
+      b += R_(14, ys(i), 150, 24, on ? "r" : "x", S("SINHVIEN", i)) + T_(22, ys(i) + 16, r[0]) + T_(156, ys(i) + 16, r[1].split(" ").pop(), "small", "end");
+      if(!on) b += `<line x1="18" y1="${ys(i) + 12}" x2="160" y2="${ys(i) + 12}" class="strike"/>`; });
+    DANGKY.rows.forEach((d, j) => { const i = SINHVIEN.rows.findIndex(s => s[0] === d[0]);
+      b += R_(306, yd(j), 120, 22, anti ? "c" : "k", S("DANGKY", j)) + T_(314, yd(j) + 15, d[0]) + T_(418, yd(j) + 15, d[1], "small", "end");
+      b += L_(164, ys(i) + 12, 306, yd(j) + 11, anti ? "ln x" : "ln", `SINHVIEN:${i}|DANGKY:${j}`); });
+    b += T_(235, 196, anti ? "giữ bộ KHÔNG có đường nối nào" : "giữ bộ có ít nhất một đường nối", "note", "middle");
+    return [svg(204, b), ""];
+  }
+  if(op.id === "tu-noi"){
+    let b = T_(14, 16, "s1 = ρ(SINHVIEN)", "lab") + T_(426, 16, "s2 = ρ(SINHVIEN)", "lab", "end");
+    const ys = i => 26 + i * 32;
+    SINHVIEN.rows.forEach((r, i) => { const has = r[2] !== null;
+      b += R_(14, ys(i), 130, 24, has ? "ra" : "x", S("S1", i)) + T_(22, ys(i) + 16, r[0]) + T_(136, ys(i) + 16, sv(r[2]), "", "end");
+      b += R_(296, ys(i), 130, 24, has ? "sb" : "x", S("S2", i)) + T_(304, ys(i) + 16, r[0]) + T_(418, ys(i) + 16, sv(r[2]), "", "end"); });
+    SINHVIEN.rows.forEach((a, i) => SINHVIEN.rows.forEach((c, j) => { if(eq(a[2], c[2]) && i !== j && a[0] > c[0]) b += L_(144, ys(i) + 12, 296, ys(j) + 12, "ln x", null); }));
+    res.rows.forEach((r, o) => { const [[, i], [, j]] = r.src; b += L_(144, ys(i) + 12, 296, ys(j) + 12, "ln", `S1:${i}|S2:${j}`); });
+    b += T_(220, 196, "nét liền: cùng lớp và s1.MaSV < s2.MaSV · nét đứt: cặp đảo bị loại", "small", "middle");
+    return [svg(204, b), ""];
+  }
+  if(["hop", "giao", "tru"].includes(op.id)){
+    const inR = new Map(DK_CSDL.rows.map((r, i) => [r[0], i])), inS = new Map(DK_CTDL.rows.map((r, j) => [r[0], j]));
+    const all = [...new Set([...inR.keys(), ...inS.keys()])], outSet = new Set(res.rows.map(r => r.v[0]));
+    const pos = {SV01: [118, 112], SV02: [220, 92], SV03: [220, 136], SV04: [322, 112]};
+    let shade = "";
+    if(op.id === "hop") shade = `<circle cx="168" cy="112" r="88" class="fillr"/><circle cx="272" cy="112" r="88" class="fillr"/><path d="M220 40 A88 88 0 0 1 220 184 A88 88 0 0 1 220 40" class="band" style="fill:var(--paper)"/><path d="M220 40 A88 88 0 0 1 220 184 A88 88 0 0 1 220 40" class="fillr"/>`;
+    if(op.id === "giao") shade = `<path d="M220 40 A88 88 0 0 1 220 184 A88 88 0 0 1 220 40" class="fillr"/>`;
+    if(op.id === "tru") shade = `<path d="M220 40 A88 88 0 0 0 220 184 A88 88 0 1 1 220 40" class="fillr"/>`;
+    let b = shade + `<circle cx="168" cy="112" r="88" class="venn"/><circle cx="272" cy="112" r="88" class="venn"/>` + T_(96, 30, "DK_CSDL", "lab", "middle") + T_(344, 30, "DK_CTDL", "lab", "middle");
+    all.forEach(v => { const [x, y] = pos[v], on = outSet.has(v), src = [inR.has(v) ? S("DK_CSDL", inR.get(v)) : null, inS.has(v) ? S("DK_CTDL", inS.get(v)) : null].filter(Boolean).join(" ");
+      b += R_(x - 26, y - 12, 52, 22, on ? "r" : "c d", src, 11) + T_(x, y + 3, v, "", "middle"); });
+    const cap = {hop: "R ∪ S: tô cả hai hình tròn. Phần giao (SV02, SV03) chỉ tính một lần.", giao: "R ∩ S: chỉ tô phần hai hình tròn chồng lên nhau.", tru: "R − S: tô phần của DK_CSDL nằm ngoài DK_CTDL. Đổi chỗ hai vế sẽ ra vùng khác (SV04)."}[op.id];
+    return [svg(204, b), cap + (op.id === "hop" && alt ? " Với UNION ALL, mỗi phần tử vùng giao được đếm hai lần." : "")];
+  }
+  if(op.id === "chia"){
+    const svs = [...new Set(DANGKY.rows.map(r => r[0]))], hps = HOCPHAN.rows.map(r => r[0]), need = BATBUOC.rows.map(r => r[0]);
+    const outSet = new Set(res.rows.map(r => r.v[0])); let b = T_(14, 16, "DANGKY như một ma trận sinh viên × học phần", "lab");
+    hps.forEach((h, c) => { const x = 120 + c * 84, j = need.indexOf(h);
+      if(j >= 0) b += R_(x, 26, 76, 150, "band", S("BATBUOC", j), 6);
+      b += T_(x + 38, 42, h, j >= 0 ? "lab" : "small", "middle"); });
+    b += T_(198, 190, "cột tô nền = BATBUOC (CSDL, CTDL)", "small", "middle");
+    svs.forEach((s, r) => { const y = 52 + r * 40, ok = outSet.has(s);
+      b += R_(14, y, 92, 30, ok ? "r" : "x", null, 4) + T_(60, y + 19, s, "", "middle");
+      hps.forEach((h, c) => { const i = DANGKY.rows.findIndex(d => d[0] === s && d[1] === h), x = 120 + c * 84;
+        b += i >= 0 ? R_(x + 22, y + 3, 32, 24, need.includes(h) ? "k" : "c", S("DANGKY", i), 12) + T_(x + 38, y + 19, "✓", "", "middle") : R_(x + 22, y + 3, 32, 24, "x", null, 12) + T_(x + 38, y + 19, "·", "small", "middle"); }); });
+    return [svg(200, b), "Phép chia: một sinh viên lọt vào kết quả khi hàng của mình có dấu ✓ ở mọi cột tô nền. SV02 hụt CTDL; cột MMT không được hỏi nên không ảnh hưởng."];
+  }
+  return ["", ""];
+}
+
+/* ---------- hình khái quát (hình dạng của bảng trước / sau phép toán) ---------- */
+const RH = 22, HH = 20, ry = (y, r) => y + HH + r * RH;
+function tb(x, y, heads, cw, n, cls, txt, strike){
+  let b = ""; const W = heads.length * cw;
+  heads.forEach((h, c) => b += `<rect x="${x + c * cw}" y="${y}" width="${cw}" height="${HH}" class="hd"/>` + T_(x + c * cw + cw / 2, y + 14, h, "hdt", "middle"));
+  for(let r = 0; r < n; r++){ const yy = ry(y, r);
+    for(let c = 0; c < heads.length; c++){ b += `<rect x="${x + c * cw}" y="${yy}" width="${cw}" height="${RH}" class="${cls(r, c)}"/>`; const t = txt ? txt(r, c) : ""; if(t) b += T_(x + c * cw + cw / 2, yy + 15, t, "", "middle"); }
+    if(strike && strike(r)) b += `<line x1="${x - 4}" y1="${yy + 11}" x2="${x + W + 4}" y2="${yy + 11}" class="strike" style="stroke-width:1.8"/>`;
+  }
+  return b;
+}
+const ARR = (x1, x2, y, sym, sub) => AR(x1, y, x2, y) + T_((x1 + x2) / 2, y - 9, sym, "big", "middle") + (sub ? T_((x1 + x2) / 2, y + 18, sub, "small", "middle") : "");
+function shape(op, alt){
+  const D4 = ["A", "B", "C", "D"];
+  if(op.id === "chon"){
+    const keepR = [0, 2, 3];
+    let b = T_(16, 24, "R: 4 cột × 6 hàng", "lab") + tb(16, 34, D4, 36, 6, r => keepR.includes(r) ? "k" : "x", (r, c) => c === 0 ? `t${r + 1}` : "", r => !keepR.includes(r));
+    b += ARR(176, 248, 104, "σ", "điều kiện");
+    b += T_(262, 24, "Kết quả: 4 cột × 3 hàng", "lab") + tb(262, 34, D4, 36, 3, () => "r", (r, c) => c === 0 ? `t${keepR[r] + 1}` : "");
+    b += T_(334, 150, "Cột: giữ nguyên", "note", "middle") + T_(334, 168, "Hàng: 6 → 3", "note", "middle");
+    return [svg(200, b), "<b>Lát cắt NGANG:</b> xét điều kiện trên từng hàng, giữ trọn hàng thoả; các cột không đổi."];
+  }
+  if(op.id === "chieu"){
+    const B = ["b1", "b2", "b1", "b3", "b2", "b1"], Dv = ["d1", "d2", "d1", "d3", "d2", "d1"];
+    const out = alt ? B.map((v, i) => [v, Dv[i]]) : [["b1", "d1"], ["b2", "d2"], ["b3", "d3"]];
+    let b = T_(16, 24, "R: 4 cột × 6 hàng", "lab") + tb(16, 34, D4, 36, 6, (r, c) => c % 2 ? "k" : "c d", (r, c) => c === 1 ? B[r] : c === 3 ? Dv[r] : "");
+    b += `<rect x="50" y="30" width="40" height="166" rx="4" class="ln" style="stroke:var(--ok);stroke-dasharray:5 3"/><rect x="122" y="30" width="40" height="166" rx="4" class="ln" style="stroke:var(--ok);stroke-dasharray:5 3"/>`;
+    b += ARR(176, 248, 104, "π", "B, D");
+    b += T_(270, 24, alt ? "Kết quả: 2 cột × 6 dòng" : "Kết quả: 2 cột × 3 hàng", "lab") + tb(270, 34, ["B", "D"], 46, out.length, () => "r", (r, c) => out[r][c]);
+    b += alt ? T_(400, 110, "giữ trùng", "note", "middle") + T_(400, 128, "(túi)", "note", "middle")
+             : T_(330, 140, "(b1, d1) có 3 lần", "note", "middle") + T_(330, 158, "→ gộp còn 1", "note", "middle");
+    return [svg(204, b), "<b>Lát cắt DỌC:</b> giữ các cột được liệt kê (khung nét đứt) rồi gộp các hàng trùng, vì kết quả là một tập hợp."];
+  }
+  if(op.id === "tich"){
+    let b = T_(16, 24, "R: 3 hàng", "lab") + tb(16, 34, ["A", "B"], 34, 3, () => "ra", (r, c) => c === 0 ? `r${r + 1}` : "");
+    b += T_(16, 136, "S: 2 hàng", "lab") + tb(16, 146, ["C", "D"], 34, 2, () => "sb", (r, c) => c === 0 ? `s${r + 1}` : "");
+    b += ARR(98, 172, 112, "×");
+    b += T_(184, 24, "R × S", "lab") + tb(184, 34, D4, 40, 6, (r, c) => c < 2 ? "ra" : "sb", (r, c) => c === 0 ? `r${Math.floor(r / 2) + 1}` : c === 2 ? `s${r % 2 + 1}` : "");
+    for(let g = 1; g < 3; g++) b += `<line x1="180" y1="${ry(34, g * 2)}" x2="348" y2="${ry(34, g * 2)}" style="stroke:var(--navy);stroke-width:2"/>`;
+    b += T_(394, 84, "3 × 2", "big", "middle") + T_(394, 102, "= 6 hàng", "note", "middle") + T_(394, 144, "2 + 2", "big", "middle") + T_(394, 162, "= 4 cột", "note", "middle");
+    return [svg(218, b), "<b>“Nhân” hình chữ nhật:</b> số hàng nhân lên (3 × 2), số cột cộng lại (2 + 2); mỗi hàng của R ghép với mọi hàng của S."];
+  }
+  if(op.id === "noi-dk"){
+    const ok = [0, 3, 4], pr = r => [Math.floor(r / 2) + 1, r % 2 + 1];
+    let b = T_(16, 24, "R × S: 6 cặp", "lab") + tb(16, 34, D4, 36, 6, (r, c) => ok.includes(r) ? (c < 2 ? "ra" : "sb") : "x", (r, c) => c === 0 ? `r${pr(r)[0]}` : c === 2 ? `s${pr(r)[1]}` : "", r => !ok.includes(r));
+    for(let r = 0; r < 6; r++) b += T_(170, ry(34, r) + 16, ok.includes(r) ? "✓" : "✗", ok.includes(r) ? "okt" : "xt", "middle");
+    b += ARR(186, 254, 104, "σθ", "giữ cặp ✓");
+    b += T_(266, 24, "R ⋈θ S: 3 cặp", "lab") + tb(266, 34, D4, 38, 3, (r, c) => c < 2 ? "ra" : "sb", (r, c) => c === 0 ? `r${pr(ok[r])[0]}` : c === 2 ? `s${pr(ok[r])[1]}` : "");
+    b += T_(220, 210, "R ⋈θ S  =  σθ(R × S)", "big", "middle");
+    return [svg(220, b), "<b>Tích rồi chọn:</b> từ lưới mọi cặp của R × S, chỉ giữ những cặp thoả điều kiện θ (✓)."];
+  }
+  if(op.id === "noi-tn"){
+    const RB = ["b1", "b2", "b1"], SB = ["b1", "b2"];
+    let b = T_(16, 24, "R(A, B)", "lab") + tb(16, 34, ["A", "B"], 38, 3, (r, c) => c ? "r" : "ra", (r, c) => c ? RB[r] : `a${r + 1}`);
+    b += T_(16, 144, "S(B, C)", "lab") + tb(16, 154, ["B", "C"], 38, 2, (r, c) => c ? "sb" : "r", (r, c) => c ? `c${r + 1}` : SB[r]);
+    const X = 250;
+    b += T_(X, 24, "R * S (A, B, C)", "lab") + tb(X, 34, ["A", "B", "C"], 44, 3, (r, c) => c === 0 ? "ra" : c === 1 ? "r" : "sb", (r, c) => c === 0 ? `a${r + 1}` : c === 1 ? RB[r] : `c${SB.indexOf(RB[r]) + 1}`);
+    RB.forEach((v, r) => { b += L_(92, ry(34, r) + 11, X, ry(34, r) + 11, "ln", null); b += L_(92, ry(154, SB.indexOf(v)) + 11, X, ry(34, r) + 11, "ln", null).replace('class="ln"', 'class="ln" style="stroke:var(--sb)"'); });
+    b += T_(330, 196, "khớp theo cột chung B", "note", "middle");
+    b += T_(316, 136, "B chỉ còn", "note", "middle") + T_(316, 154, "một cột", "note", "middle");
+    return [svg(222, b), "<b>Nối theo cột cùng tên B:</b> hàng của R và hàng của S có cùng giá trị B thì ghép lại; cột B chỉ giữ một bản."];
+  }
+  if(op.id === "noi-ngoai"){
+    const L = alt !== 1, Rt = alt !== 0;
+    let b = T_(16, 24, "R", "lab") + tb(16, 34, ["A", "B"], 34, 3, r => r < 2 ? "ra" : L ? "ra lone" : "x", (r, c) => c ? "" : `r${r + 1}`, r => r === 2 && !L);
+    b += T_(16, 132, "S", "lab") + tb(16, 142, ["C", "D"], 34, 3, r => r < 2 ? "sb" : Rt ? "sb lone" : "x", (r, c) => c ? "" : `s${r + 1}`, r => r === 2 && !Rt);
+    const out = [["r1", "s1"], ["r2", "s2"]]; if(L) out.push(["r3", null]); if(Rt) out.push([null, "s3"]);
+    const sym = ["⟕", "⟖", "⟗"][alt];
+    b += ARR(98, 168, 112, sym, ["LEFT", "RIGHT", "FULL"][alt]);
+    b += T_(182, 24, `R ${sym} S`, "lab") + tb(182, 34, ["A", "B", "C", "D"], 40, out.length, (r, c) => (c < 2 ? out[r][0] : out[r][1]) === null ? "nul" : c < 2 ? "ra" : "sb", (r, c) => c === 0 ? (out[r][0] || "NULL") : c === 2 ? (out[r][1] || "NULL") : "");
+    b += `<line x1="178" y1="${ry(34, 2)}" x2="346" y2="${ry(34, 2)}" style="stroke:var(--navy);stroke-width:2"/>`;
+    b += T_(394, ry(34, 0) + 26, "nối trong", "note", "middle") + T_(394, ry(34, 2) + 26, "+ bộ lẻ", "note", "middle") + T_(394, ry(34, 2) + 44, "điền NULL", "note", "middle");
+    b += T_(264, 214, "r3, s3: bộ không có cặp", "small", "middle");
+    return [svg(222, b), "<b>Nối trong + giữ bộ lẻ:</b> các cặp khớp như ⋈; bộ không có cặp của vế được giữ (trái, phải hoặc cả hai) vẫn vào kết quả, phần thiếu điền NULL (ô xám)."];
+  }
+  if(op.id === "nua-noi" || op.id === "phan-noi"){
+    const anti = op.id === "phan-noi", Sr = [0, 0, 2], hit = r => Sr.includes(r), keepR = r => anti ? !hit(r) : hit(r);
+    let b = T_(16, 24, "R(A, B)", "lab") + tb(16, 34, ["A", "B"], 38, 4, r => keepR(r) ? "ra" : "x", (r, c) => c ? "" : `r${r + 1}`, r => !keepR(r));
+    b += T_(170, 24, "S(A, C)", "lab") + tb(170, 34, ["A", "C"], 38, 3, () => "sb", (r, c) => c ? "" : `r${Sr[r] + 1}`);
+    Sr.forEach((r, j) => b += `<line x1="92" y1="${ry(34, r) + 11}" x2="170" y2="${ry(34, j) + 11}" class="${anti ? "eq" : "eq"}"/>`);
+    const out = [0, 1, 2, 3].filter(keepR);
+    b += ARR(254, 318, 90, anti ? "▷" : "⋉");
+    b += T_(330, 24, anti ? "R ▷ S" : "R ⋉ S", "lab") + tb(330, 34, ["A", "B"], 44, out.length, () => "r", (r, c) => c ? "" : `r${out[r] + 1}`);
+    b += anti ? T_(220, 160, "R ▷ S  =  R − (R ⋉ S)", "big", "middle") + T_(220, 184, "giữ hàng của R KHÔNG khớp hàng nào của S", "note", "middle")
+              : T_(220, 160, "R * S: 3 dòng · R ⋉ S: 2 dòng", "big", "middle") + T_(220, 184, "chỉ giữ cột của R, mỗi hàng một lần", "note", "middle");
+    return [svg(196, b), anti ? "<b>Phần bù của nửa nối:</b> giữ những hàng của R không ghép được với hàng nào của S (r2, r4); vẫn chỉ có cột của R." : "<b>Lọc R bằng S:</b> giữ hàng của R có ít nhất một hàng khớp bên S; kết quả chỉ có cột của R và không lặp, dù r1 khớp hai lần."];
+  }
+  if(op.id === "tu-noi"){
+    const A = ["a1", "a2", "a3", "a4"], B = ["b1", "b1", "b2", "b2"];
+    let b = T_(16, 24, "R", "lab") + tb(16, 34, ["A", "B"], 32, 4, () => "c", (r, c) => c ? B[r] : A[r]);
+    b += ARR(84, 130, 80, "ρ");
+    b += T_(136, 24, "R1", "lab") + tb(136, 34, ["A1", "B1"], 32, 4, () => "ra", (r, c) => c ? B[r] : A[r]);
+    b += T_(212, 24, "R2", "lab") + tb(212, 34, ["A2", "B2"], 32, 4, () => "sb", (r, c) => c ? B[r] : A[r]);
+    b += ARR(282, 330, 80, "⋈");
+    b += T_(336, 24, "kết quả", "lab") + tb(336, 34, ["A1", "A2", "B"], 32, 2, () => "r", (r, c) => [["a1", "a2", "b1"], ["a3", "a4", "b2"]][r][c]);
+    b += T_(220, 172, "điều kiện: B1 = B2  ∧  A1 < A2", "big", "middle") + T_(220, 194, "đổi tên để tách hai bản sao của cùng một bảng", "note", "middle");
+    return [svg(204, b), "<b>Nối một bảng với chính nó:</b> ρ tạo hai bản sao R1, R2 với tên cột riêng, rồi nối như hai bảng khác nhau. Điều kiện A1 &lt; A2 bỏ cặp tự ghép và cặp đảo chiều."];
+  }
+  if(["hop", "giao", "tru"].includes(op.id)){
+    const Rr = ["a", "b", "c"], Sr = ["b", "c", "d"];
+    const both = v => Rr.includes(v) && Sr.includes(v);
+    let b = T_(16, 24, "R", "lab") + tb(16, 34, ["A", "B"], 38, 3, r => op.id === "tru" && both(Rr[r]) ? "x" : "ra", (r, c) => c ? "" : Rr[r], r => op.id === "tru" && both(Rr[r]));
+    b += T_(126, 24, "S", "lab") + tb(126, 34, ["A", "B"], 38, 3, () => "sb", (r, c) => c ? "" : Sr[r]);
+    Rr.forEach((v, r) => { const j = Sr.indexOf(v); if(j >= 0) b += `<line x1="92" y1="${ry(34, r) + 11}" x2="126" y2="${ry(34, j) + 11}" class="eq"/>`; });
+    b += T_(92, 140, "cùng lược đồ (A, B)", "note", "middle") + T_(92, 158, "= khả hợp", "note", "middle");
+    const out = op.id === "hop" ? (alt ? ["a", "b", "c", "b", "c", "d"] : ["a", "b", "c", "d"]) : op.id === "giao" ? ["b", "c"] : ["a"];
+    const sym = {hop: alt ? "∪ ALL" : "∪", giao: "∩", tru: "−"}[op.id];
+    b += ARR(216, 282, 90, sym);
+    b += T_(296, 24, `R ${sym} S`, "lab") + tb(296, 34, ["A", "B"], 44, out.length, r => alt && op.id === "hop" ? (r < 3 ? "ra" : "sb") : both(out[r]) ? "both" : Rr.includes(out[r]) ? "ra" : "sb", (r, c) => c ? "" : out[r]);
+    const note = {hop: alt ? "3 + 3 = 6 dòng" : "3 + 3 − 2 trùng = 4 bộ", giao: "2 bộ có ở cả hai", tru: "3 − 2 chung = 1 bộ"}[op.id];
+    b += T_(220, 206, note, "note", "middle");
+    const cap = {
+      hop: "<b>Xếp chồng hai bảng cùng lược đồ (khả hợp)</b> rồi bỏ bản trùng: b, c chỉ còn một lần.",
+      giao: "<b>Chỉ giữ hàng có ở cả hai bảng</b> (các hàng nối bằng nét đứt).",
+      tru: "<b>Giữ hàng của R không có trong S;</b> hàng có “bản sao” bên S bị gạch. R − S khác S − R."}[op.id];
+    return [svg(214, b), cap];
+  }
+  if(op.id === "chia"){
+    const R = [["a1", "b1"], ["a1", "b2"], ["a2", "b1"], ["a3", "b1"], ["a3", "b2"], ["a3", "b3"]], Sv = ["b1", "b2"];
+    const good = a => Sv.every(s => R.some(t => t[0] === a && t[1] === s));
+    let b = T_(16, 24, "R(A, B)", "lab") + tb(16, 34, ["A", "B"], 40, 6, (r, c) => c ? (Sv.includes(R[r][1]) ? "sb" : "c d") : good(R[r][0]) ? "ra" : "x", (r, c) => R[r][c]);
+    [[0, 1, "a1"], [2, 2, "a2"], [3, 5, "a3"]].forEach(([s, e, a]) => {
+      const y1 = ry(34, s) + 3, y2 = ry(34, e) + RH - 3, ok = good(a);
+      b += `<path d="M100 ${y1} h6 V ${y2} h-6" class="br"/>`;
+      b += T_(114, (y1 + y2) / 2 + 5, ok ? "✓ đủ b1, b2" : "✗ thiếu b2", ok ? "okt" : "xt");
+    });
+    b += T_(232, 24, "S(B)", "lab") + tb(232, 34, ["B"], 48, 2, () => "sb", r => Sv[r]);
+    b += ARR(224, 330, 150, "÷");
+    b += T_(346, 104, "R ÷ S (A)", "lab") + tb(346, 114, ["A"], 52, 2, () => "r", r => ["a1", "a3"][r]);
+    b += T_(220, 212, "(R ÷ S) × S ⊆ R", "big", "middle");
+    return [svg(222, b), "<b>Câu hỏi “đủ mọi”:</b> gom R theo A; nhóm nào có B phủ hết S thì A vào kết quả. a2 thiếu b2 bị loại, a3 thừa b3 vẫn đạt."];
+  }
+  return ["", ""];
+}
+
+/* ---------- vẽ ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cell = v => v === null ? '<td class="null">NULL</td>' : `<td>${esc(v)}</td>`;
+function hiSQL(s){
+  return esc(s).split("\n").map(l => { const i = l.indexOf("--"); const code = i >= 0 ? l.slice(0, i) : l, cm = i >= 0 ? l.slice(i) : "";
+    return code.replace(/'[^']*'/g, m => `<span class="str">${m}</span>`)
+      .replace(/\b(SELECT|DISTINCT|FROM|WHERE|CROSS|NATURAL|JOIN|ON|UNION|ALL|INTERSECT|EXCEPT|NOT|EXISTS|AND|INNER|LEFT|RIGHT|FULL|OUTER|AS|IN|IS|NULL)\b/g, '<span class="kw">$1</span>')
+      + (cm ? `<span class="cm">${cm}</span>` : ""); }).join("\n");
+}
+const val = x => typeof x === "function" ? x(+alt) : x;
+let cur = OPS[0], alt = 0, pinned = null, res = null;
+function relTable(R){
+  const d = (res.dim || {})[R.name] || [];
+  return `<div class="rel"><div class="relhead"><span class="relname">${R.name}</span><span class="card-count">${R.rows.length} bộ</span></div>
+    <div class="tbl"><table data-rel="${R.name}"><thead><tr>${R.cols.map((c,k)=>`<th class="${d.includes(k)?"dim":""}">${c}</th>`).join("")}</tr></thead>
+    <tbody>${R.rows.map((r,i)=>`<tr data-i="${i}" class="${((res.cut||{})[R.name]||[]).includes(i)?"cut":((res.keep||{})[R.name]||[]).includes(i)?"keep":""}">${r.map((v,k)=>cell(v).replace("<td", `<td${d.includes(k)?' class="dim"':""}`).replace('<td class="dim" class="null"','<td class="dim null"')).join("")}</tr>`).join("")}</tbody></table></div></div>`;
+}
+function render(){
+  res = cur.run(alt); pinned = null;
+  document.querySelectorAll(".op").forEach(b => b.setAttribute("aria-selected", b.dataset.id === cur.id));
+  document.querySelectorAll("#ref tbody tr").forEach(r => r.classList.toggle("cur", r.dataset.id === cur.id));
+  $("#opname").textContent = cur.name; $("#formula").innerHTML = val(cur.f);
+  $("#reading").textContent = val(cur.reading); $("#gsym").textContent = cur.id === "noi-ngoai" ? ["⟕","⟖","⟗"][alt] : cur.sym;
+  let sql = val(cur.sql);
+  if(cur.id === "chieu" && alt) sql = sql.replace("DISTINCT ", "");
+  if(cur.id === "hop" && alt) sql = sql.replace("UNION", "UNION ALL");
+  $("#sql").innerHTML = hiSQL(sql); $("#sql").dataset.raw = sql;
+  const tg = $("#toggle");
+  if(cur.toggle){ tg.hidden = false; tg.innerHTML = `<span class="eyebrow">So sánh</span>` + (cur.toggle.opts || [cur.toggle.a, cur.toggle.b]).map((t, k) => `<button type="button" aria-pressed="${+alt === k}" data-v="${k}">${t}</button>`).join(""); }
+  else { tg.hidden = true; tg.innerHTML = ""; }
+  $("#notes").innerHTML = cur.notes.slice(0, 2).map(n => `<li>${n}</li>`).join("");
+  const [g] = geo(cur, res, alt); $("#geo").innerHTML = g;
+  const [sh, shc] = shape(cur, alt); $("#shape").innerHTML = sh; $("#shapecap").innerHTML = shc;
+  $("#outcount").textContent = `${res.rows.length} ${alt && (cur.id === "chieu" || cur.id === "hop") ? "dòng" : "bộ"}`;
+  $("#out").innerHTML = `<thead><tr>${res.cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${res.rows.map((r,i) => `<tr tabindex="0" data-o="${i}"${r.pad ? ' class="pad"' : ""}>${r.v.map(cell).join("")}</tr>`).join("")}</tbody>`;
+}
+function light(o){
+  document.querySelectorAll("tr.lit, #geo .lit").forEach(t => t.classList.remove("lit"));
+  if(o === null || o === undefined) return;
+  const tr = $(`#out tr[data-o="${o}"]`); if(tr) tr.classList.add("lit");
+  const set = new Set(res.rows[o].src.map(([n, i]) => `${n}:${i}`).concat([`OUT:${o}`]));
+  res.rows[o].src.forEach(([n,i]) => { const t = document.querySelector(`table[data-rel="${n}"] tr[data-i="${i}"]`); if(t) t.classList.add("lit"); });
+  document.querySelectorAll("#geo [data-src]").forEach(el => { if(el.dataset.src.split(" ").some(s => set.has(s))) el.classList.add("lit"); });
+  document.querySelectorAll("#geo [data-pair]").forEach(el => { if(el.dataset.pair.split("|").every(s => set.has(s))) el.classList.add("lit"); });
+}
+/* ---------- sự kiện ---------- */
+$("#ops").innerHTML = OPS.map(o => `<button class="op" role="tab" type="button" data-id="${o.id}" title="${o.name}"><span class="sym">${o.sym}</span>${o.short}</button>`).join("");
+$("#ref tbody").innerHTML = OPS.map(o => `<tr data-id="${o.id}" tabindex="0"><td>${o.name}</td><td><code>${esc(o.ref)}</code></td><td><code>${esc(o.refsql)}</code></td></tr>`).join("");
+function go(id){ const o = OPS.find(x => x.id === id); if(!o) return; cur = o; alt = 0; render(); }
+$("#ops").addEventListener("click", e => { const b = e.target.closest(".op"); if(b){ location.hash = b.dataset.id; go(b.dataset.id); } });
+$("#ref").addEventListener("click", e => { const r = e.target.closest("tbody tr"); if(r){ location.hash = r.dataset.id; go(r.dataset.id); window.scrollTo({top:0,behavior:"smooth"}); } });
+$("#ref").addEventListener("keydown", e => { if(e.key === "Enter"){ const r = e.target.closest("tbody tr"); if(r) r.click(); } });
+$("#toggle").addEventListener("click", e => { const b = e.target.closest("button"); if(b){ alt = +b.dataset.v; render(); } });
+const out = $("#out");
+out.addEventListener("mouseover", e => { const t = e.target.closest("tr[data-o]"); if(t && pinned === null) light(+t.dataset.o); });
+out.addEventListener("mouseleave", () => { if(pinned === null) light(null); });
+out.addEventListener("click", e => { const t = e.target.closest("tr[data-o]"); if(!t) return; const o = +t.dataset.o; pinned = pinned === o ? null : o; light(pinned); });
+out.addEventListener("focusin", e => { const t = e.target.closest("tr[data-o]"); if(t) light(+t.dataset.o); });
+$("#copy").addEventListener("click", async () => {
+  const raw = $("#sql").dataset.raw, b = $("#copy");
+  try { await navigator.clipboard.writeText(raw); b.textContent = "Đã chép"; }
+  catch(err){ const r = document.createRange(); r.selectNodeContents($("#sql")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Đã chọn, nhấn Ctrl+C"; }
+  setTimeout(() => b.textContent = "Sao chép", 1600);
+});
+window.addEventListener("hashchange", () => go(location.hash.slice(1)));
+go(OPS.some(o => o.id === location.hash.slice(1)) ? location.hash.slice(1) : "chon");
+light(0);
+</script>
+</body></html>
